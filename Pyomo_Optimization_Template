@@ -1,0 +1,156 @@
+"""
+Pyomo Optimization Template
+A basic template to understand the key components needed for optimization
+"""
+
+from pyomo.environ import *
+
+# ============================================================================
+# 1. CREATE A CONCRETE MODEL
+# ============================================================================
+model = ConcreteModel()
+
+# ============================================================================
+# 2. DEFINE SETS (Collections of indices)
+# ============================================================================
+# Example: Products
+model.products = Set(initialize=['P1', 'P2', 'P3'])
+
+# Example: Time periods or resources
+model.resources = Set(initialize=['R1', 'R2'])
+
+# ============================================================================
+# 3. DEFINE PARAMETERS (Known data/constants)
+# ============================================================================
+# Profit per product (dollars)
+model.profit = Param(
+    model.products,
+    initialize={'P1': 10, 'P2': 15, 'P3': 12}
+)
+
+# Resource requirement: units of resource per product
+model.resource_usage = Param(
+    model.products,
+    model.resources,
+    initialize={
+        ('P1', 'R1'): 2, ('P1', 'R2'): 1,
+        ('P2', 'R1'): 1, ('P2', 'R2'): 3,
+        ('P3', 'R1'): 2, ('P3', 'R2'): 2,
+    }
+)
+
+# Available resource capacity
+model.resource_capacity = Param(
+    model.resources,
+    initialize={'R1': 10, 'R2': 12}
+)
+
+# ============================================================================
+# 4. DEFINE DECISION VARIABLES
+# ============================================================================
+# Production quantity for each product (what we're solving for)
+model.production = Var(
+    model.products,
+    within=NonNegativeReals,  # Variables must be >= 0
+    initialize=0             # Starting value
+)
+
+# Optional: Binary variable example (0 or 1)
+# model.use_resource = Var(model.resources, within=Binary)
+
+# Optional: Integer variable example
+# model.batches = Var(model.products, within=NonNegativeIntegers)
+
+# ============================================================================
+# 5. DEFINE OBJECTIVE FUNCTION
+# ============================================================================
+def objective_rule(model):
+    """Maximize total profit"""
+    return sum(model.profit[p] * model.production[p] for p in model.products)
+
+model.obj = Objective(rule=objective_rule, sense=maximize)
+
+# Alternative (minimization):
+# model.obj = Objective(rule=objective_rule, sense=minimize)
+
+# ============================================================================
+# 6. DEFINE CONSTRAINTS
+# ============================================================================
+# Resource capacity constraint
+def resource_constraint_rule(model, r):
+    """Ensure resource usage doesn't exceed capacity"""
+    return (
+        sum(model.resource_usage[p, r] * model.production[p] 
+            for p in model.products) 
+        <= model.resource_capacity[r]
+    )
+
+model.resource_limit = Constraint(
+    model.resources,
+    rule=resource_constraint_rule
+)
+
+# Optional: Single product minimum production
+# def min_production_rule(model, p):
+#     return model.production[p] >= 2
+
+# model.min_prod = Constraint(model.products, rule=min_production_rule)
+
+# Optional: Maximum production constraint
+# def max_production_rule(model, p):
+#     return model.production[p] <= 10
+
+# model.max_prod = Constraint(model.products, rule=max_production_rule)
+
+# Optional: Logical constraint (if-then)
+# def logical_constraint_rule(model):
+#     return model.production['P1'] <= 5 * model.production['P2']
+
+# model.logical = Constraint(rule=logical_constraint_rule)
+
+# ============================================================================
+# 7. SOLVE THE MODEL
+# ============================================================================
+# Create solver
+solver = SolverFactory('glpk')  # or 'ipopt', 'gurobi', 'cplex', etc.
+
+# Solve
+results = solver.solve(model, tee=True)  # tee=True shows solver output
+
+# ============================================================================
+# 8. DISPLAY RESULTS
+# ============================================================================
+# Check solution status
+print("\n" + "="*60)
+print("OPTIMIZATION RESULTS")
+print("="*60)
+print(f"Solver Status: {results.solver.status}")
+print(f"Termination Condition: {results.solver.termination_condition}")
+
+# Objective value
+print(f"\nOptimal Total Profit: ${model.obj():.2f}")
+
+# Decision variables
+print("\nOptimal Production Quantities:")
+for p in model.products:
+    print(f"  {p}: {model.production[p]():.2f} units")
+
+# Display constraints (optional - useful for verification)
+print("\nResource Usage:")
+for r in model.resources:
+    usage = sum(model.resource_usage[p, r] * model.production[p]() 
+                for p in model.products)
+    capacity = model.resource_capacity[r]
+    print(f"  {r}: {usage:.2f} / {capacity} (Capacity: {capacity - usage:.2f} remaining)")
+
+# ============================================================================
+# 9. (OPTIONAL) WRITE TO FILE OR PERFORM SENSITIVITY ANALYSIS
+# ============================================================================
+# Save model to file
+# model.write('model.nl', io_options={'symbolic_solver_labels': True})
+
+# Access dual values (shadow prices) for constraints
+# for constraint in model.component_objects(Constraint, active=True):
+#     print(f"\n{constraint.name}:")
+#     for index in constraint:
+#         print(f"  [{index}] Dual: {model.dual[constraint[index]]}")
